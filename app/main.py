@@ -3,6 +3,7 @@ import os
 # Set tokenizers parallelism to avoid deadlocks with forked processes
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+import asyncio
 import logging
 import logging.config
 from typing import Any, Dict, List
@@ -92,7 +93,7 @@ async def generate_review_for_file(
 async def process_installation_event(full_name: str):
     """Process an installation event by triggering the incremental indexing pipeline."""
     logger.info(f"Processing installation event for repo: {full_name}")
-    index_repository(f"https://github.com/{full_name}.git")
+    await index_repository(f"https://github.com/{full_name}.git")
 
 
 async def process_push_event(push_info: Dict[str, str]):
@@ -146,10 +147,28 @@ async def handle_pull_request_event(payload: Dict[str, Any]):
         chain = prompt | llm | JsonOutputParser()
 
         all_review_comments = []
+        review_tasks = []
 
         for file_diff in file_diffs:
-            review_comments = await generate_review_for_file(chain, file_diff, repo_url)
+            # Create a task for each file review
+            task = generate_review_for_file(chain, file_diff, repo_url)
+            review_tasks.append(task)
 
+        # Run all file review tasks concurrently
+        logger.info(f"Starting parallel review for {len(review_tasks)} files...")
+        results_from_tasks = await asyncio.gather(*review_tasks, return_exceptions=True)
+        logger.info(f"Completed parallel review for {len(review_tasks)} files.")
+
+        # Process the results from asyncio.gather
+        for i, result in enumerate(results_from_tasks):
+            file_diff = file_diffs[i]  # Get the corresponding file_diff
+            if isinstance(result, Exception):
+                logger.error(
+                    f"Error generating review for file {file_diff.path}: {result}"
+                )
+                continue  # Skip this file if an error occurred
+
+            review_comments = result  # result is the list of comments for this file
             for comment in review_comments:
                 line_number = comment.get("line_number")
                 comment_text = comment.get("comment")
@@ -167,7 +186,7 @@ async def handle_pull_request_event(payload: Dict[str, Any]):
                     )
                 else:
                     logger.warning(
-                        f"Warning: Could not map line {line_number} for {file_diff.path}. Comment will be skipped."
+                        f"Warning: Could not map line {line_number} for {file_diff.path}. Comment will be skipped or comment text missing."
                     )
 
         if all_review_comments:

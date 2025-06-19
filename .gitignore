@@ -19,3 +19,5 @@ lancedb_data/
 
 # Cloned repositories directory
 repos/
+
+**/*.log

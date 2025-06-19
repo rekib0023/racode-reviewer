@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import asyncio
 
 from dotenv import load_dotenv
 
@@ -20,7 +21,37 @@ load_dotenv()
 logger = logging.getLogger("app")
 
 
-def index_repository(repo_url: str):
+async def _process_single_file(file_path: str, local_repo_path: str, repo_url: str, embedding_model) -> list[CodeChunkSchema]:
+    """Helper function to process a single file asynchronously."""
+    relative_file_path = os.path.relpath(file_path, local_repo_path)
+    logger.info(f"  - Processing file: {relative_file_path}")
+    file_chunks = []
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = await asyncio.to_thread(f.read)
+
+        # CPU-bound: run in a separate thread
+        code_chunks_data = await asyncio.to_thread(parse_and_extract_chunks, relative_file_path, content)
+
+        for chunk_data in code_chunks_data:
+            # CPU-bound: run in a separate thread
+            embedding = await asyncio.to_thread(get_embedding, chunk_data["code"], embedding_model)
+            if embedding is not None:
+                chunk_schema_item = CodeChunkSchema(
+                    id=chunk_data["id"],
+                    repo_url=repo_url,
+                    file_path=chunk_data["file_path"],
+                    code_chunk=chunk_data["code"],
+                    embedding=embedding,
+                    start_line=chunk_data["start_line"],
+                    end_line=chunk_data["end_line"],
+                )
+                file_chunks.append(chunk_schema_item)
+    except Exception as e:
+        logger.error(f"    - Error processing file {relative_file_path}: {e}")
+    return file_chunks
+
+async def index_repository(repo_url: str):
     """
     Orchestrates the full pipeline of cloning, parsing, embedding, and indexing a repository.
 
@@ -69,47 +100,29 @@ def index_repository(repo_url: str):
     logger.info("Repository ready.")
 
     # 4. Walk Filesystem, Parse, Embed, and Prepare Data
-    logger.info("\nStep 3: Parsing, embedding, and preparing data...")
-    all_chunks_to_add = []
-    files_processed = 0
+    logger.info("\nStep 3: Discovering files and preparing for parallel processing...")
+    python_files_to_process = []
     for root, _, files in os.walk(local_repo_path):
-        # Skip .git directory
         if ".git" in root:
             continue
-
         for file in files:
-            # For now, we only process Python files
             if file.endswith(".py"):
-                file_path = os.path.join(root, file)
-                relative_file_path = os.path.relpath(file_path, local_repo_path)
-                logger.info(f"  - Processing file: {relative_file_path}")
-                files_processed += 1
-                try:
-                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read()
+                python_files_to_process.append(os.path.join(root, file))
+    
+    logger.info(f"Found {len(python_files_to_process)} Python files to process.")
+    logger.info("Starting parallel processing of files...")
 
-                    # Get code chunks (functions, classes)
-                    code_chunks = parse_and_extract_chunks(relative_file_path, content)
-
-                    # Embed each chunk and prepare for DB insertion
-                    for chunk in code_chunks:
-                        embedding = get_embedding(chunk["code"], embedding_model)
-                        if embedding is not None:
-                            chunk_schema_item = CodeChunkSchema(
-                                id=chunk["id"],
-                                repo_url=repo_url,
-                                file_path=chunk["file_path"],
-                                code_chunk=chunk["code"],
-                                embedding=embedding,
-                                start_line=chunk["start_line"],
-                                end_line=chunk["end_line"],
-                            )
-                            all_chunks_to_add.append(chunk_schema_item)
-
-                except Exception as e:
-                    logger.error(
-                        f"    - Error processing file {relative_file_path}: {e}"
-                    )
+    tasks = [
+        _process_single_file(file_path, local_repo_path, repo_url, embedding_model)
+        for file_path in python_files_to_process
+    ]
+    
+    all_chunks_from_tasks = await asyncio.gather(*tasks)
+    
+    all_chunks_to_add = []
+    for file_chunk_list in all_chunks_from_tasks:
+        all_chunks_to_add.extend(file_chunk_list)
+    files_processed = len(python_files_to_process)
 
     logger.info(
         f"Data preparation complete. Found {len(all_chunks_to_add)} chunks in {files_processed} Python files."
