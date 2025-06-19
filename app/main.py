@@ -5,6 +5,9 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 
+from .auth import get_installation_access_token
+from .github_client import fetch_pr_diff, post_pr_comment # Import GitHub client functions
+
 load_dotenv()
 
 APP_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET")
@@ -50,8 +53,52 @@ async def github_webhook(request: Request):
         print(f"Received pull_request event with action: {action}")
 
         # Handle specific pull request actions
-        if action in ["opened", "synchronize", "ready_for_review"]:
-            # Add your bot's logic here for these events
+        if action in ["opened", "reopened", "synchronize", "ready_for_review"]:
+            installation_id = payload.get("installation", {}).get("id")
+            if not installation_id:
+                print("Error: Installation ID not found in payload.")
+                # Potentially raise HTTPException or handle error appropriately
+                return {"status": "error", "message": "Installation ID missing"}
+
+            try:
+                token = get_installation_access_token(installation_id)
+                print(
+                    f"Successfully obtained installation token for ID: {installation_id}"
+                )
+
+                # Extract PR details for fetching diff
+                pull_request_payload = payload.get("pull_request", {})
+                repository_payload = payload.get("repository", {})
+
+                owner = repository_payload.get("owner", {}).get("login")
+                repo_name = repository_payload.get("name")
+                pull_number = pull_request_payload.get("number")
+
+                if owner and repo_name and pull_number:
+                    print(f"Fetching diff for {owner}/{repo_name} PR #{pull_number}")
+                    diff_content = fetch_pr_diff(token, owner, repo_name, pull_number)
+                    if diff_content:
+                        print(
+                            f"Successfully fetched PR diff. Snippet:\n{diff_content[:200]}..."
+                        )
+                        # In a future ticket, this diff_content will be used for analysis.
+
+                        # Post a placeholder comment
+                        placeholder_comment = "AI Reviewer Acknowledged PR."
+                        comment_posted = post_pr_comment(token, owner, repo_name, pull_number, placeholder_comment)
+                        if comment_posted:
+                            print(f"Successfully posted placeholder comment to PR #{pull_number}.")
+                        else:
+                            print(f"Failed to post placeholder comment to PR #{pull_number}.")
+                    else:
+                        print("Failed to fetch PR diff.")
+                else:
+                    print("Error: Missing owner, repo name, or pull number in payload for diff fetching/commenting.")
+
+            except Exception as e:
+                print(f"Error in webhook processing: {e}")
+                # Handle error appropriately
+
             print(f"Handling action: {action} for PR #{payload.get('number')}")
             # In a future ticket, we will add code here to trigger a code review.
 
