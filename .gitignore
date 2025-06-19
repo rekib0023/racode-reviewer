@@ -13,3 +13,9 @@ docs/*
 # Virtual environments
 .venv
 .env
+
+# LanceDB data directory
+lancedb_data/
+
+# Cloned repositories directory
+repos/
