@@ -1,103 +1,160 @@
-# Code Reviewer
+<div align="center">
+  <h1>🤖 Code Reviewer</h1>
+  <p>
+    <strong>AI-Powered Code Review Assistant</strong> | 
+    <a href="#features">Features</a> • 
+    <a href="#quick-start">Quick Start</a> • 
+    <a href="#documentation">Documentation</a> • 
+    <a href="#contributing">Contributing</a>
+  </p>
+  <p>
+    <a href="https://github.com/yourusername/code-reviewer/actions">
+      <img src="https://github.com/yourusername/code-reviewer/actions/workflows/tests.yml/badge.svg" alt="Build Status">
+    </a>
+    <a href="https://codecov.io/gh/yourusername/code-reviewer">
+      <img src="https://codecov.io/gh/yourusername/code-reviewer/branch/main/graph/badge.svg" alt="Code Coverage">
+    </a>
+    <a href="https://pypi.org/project/code-reviewer/">
+      <img src="https://img.shields.io/pypi/v/code-reviewer" alt="PyPI Version">
+    </a>
+    <a href="https://github.com/psf/black">
+      <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code Style: Black">
+    </a>
+  </p>
+</div>
 
-A GitHub App backend with Retrieval-Augmented Generation (RAG) capabilities for code analysis and review.
+## 🚀 Features
 
-## Project Overview
+- **AI-Powered Code Reviews**: Leverage state-of-the-art language models for insightful code analysis
+- **Retrieval-Augmented Generation (RAG)**: Context-aware code understanding using vector embeddings
+- **GitHub Integration**: Seamless integration with GitHub repositories and pull requests
+- **Incremental Indexing**: Smart updates to only process changed code
+- **Multi-language Support**: Built-in support for multiple programming languages
+- **Customizable Rules**: Define your own code review guidelines and standards
 
-This project implements a backend service for a GitHub App that can analyze code repositories using RAG techniques. The system:
-
-1. Clones GitHub repositories
-2. Parses code into meaningful chunks using Abstract Syntax Trees (AST)
-3. Generates embeddings for code chunks
-4. Stores code chunks and embeddings in a vector database
-5. Provides semantic search capabilities for code understanding
-
-## Core Components
-
-### Repository Management
-
-- `app/repo_manager.py`: Handles cloning and pulling repositories using GitPython
-
-### Code Processing
-
-- `app/code_parser.py`: Parses Python code into meaningful chunks (functions and classes) using tree-sitter
-- `app/embedding_generator.py`: Generates embeddings for code chunks using sentence-transformers
-
-### Vector Database
-
-- `app/vector_store.py`: Manages LanceDB connections and tables for storing code chunks and embeddings
-
-### Pipeline Orchestration
-
-- `app/indexer.py`: Orchestrates the full pipeline of cloning, parsing, embedding, and indexing
-- `app/incremental_indexer.py`: Handles incremental updates to the index based on git diffs between commits
-- `app/webhook_handler.py`: Provides GitHub webhook endpoints to trigger incremental indexing on push events
-- `app/query_engine.py`: Provides semantic search capabilities for querying indexed code
-
-## Getting Started
+## 🏃 Quick Start
 
 ### Prerequisites
 
-- Python 3.12
-- Dependencies listed in `pyproject.toml`
+- Python 3.9+
+- Ollama (for local LLM)
+- Git
+- [Docker](https://docs.docker.com/get-docker/) (optional)
 
-### Environment Setup
-
-1. Clone this repository
-2. Create a `.env` file based on `.env.example`
-3. Install dependencies:
-   ```bash
-   uv pip sync pyproject.toml
-   ```
-
-### Indexing a Repository
-
-#### Full Indexing
-
-To perform a full index of a GitHub repository:
+### Installation
 
 ```bash
-uv run python -m app.indexer
+# Clone the repository
+git clone https://github.com/yourusername/code-reviewer.git
+cd code-reviewer
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+
+# Install dependencies
+pip install -e .
 ```
 
-By default, this will index the sample repository specified in the script. To index a different repository, modify the `sample_repo_url` in `app/indexer.py`.
-
-#### Incremental Indexing
-
-To perform an incremental update between two commits:
+### Configure Environment
 
 ```bash
-uv run python -m app.incremental_indexer "https://github.com/username/repo.git" "old_commit_sha" "new_commit_sha"
+# Copy example environment file
+cp .env.example .env
+
+# Edit the .env file with your configuration
+# See Configuration section for details
 ```
 
-This will only process files that were added, modified, or deleted between the two commits, making updates much faster for large repositories.
-
-### Querying Indexed Code
-
-To query the indexed code:
+### Running the Service
 
 ```bash
-uv run python -m app.query_engine --query "How does the chat service work?"
+# Start the FastAPI server
+uvicorn app.main:app --reload
 ```
 
-Or for multiple queries:
+Visit `http://localhost:8000/docs` for the interactive API documentation.
+
+## 📚 Documentation
+
+For detailed documentation, please see our [Technical Documentation](TECHNICAL_DOCS.md).
+
+### Core Components
+
+| Component | Description |
+|-----------|-------------|
+| **GitHub Service** | Handles GitHub API interactions and webhook events |
+| **LLM Service** | Manages language model interactions and review generation |
+| **Vector Store** | Stores and retrieves code embeddings using LanceDB |
+| **Repository Manager** | Handles Git operations and repository management |
+
+### Configuration
+
+Create a `.env` file with the following variables:
+
+```env
+# Ollama Configuration
+CHAT_MODEL_NAME=deepseek-coder:7b
+
+# GitHub App Configuration
+GITHUB_APP_ID=your_app_id
+GITHUB_PRIVATE_KEY_PATH=path/to/private-key.pem
+GITHUB_WEBHOOK_SECRET=your_webhook_secret
+
+# Database Configuration
+LANCE_DB_PATH=./lancedb_data
+```
+
+## 🛠️ Development
+
+### Running Tests
 
 ```bash
-uv run python -m app.query_engine --interactive
+# Install test dependencies
+pip install -e ".[test]"
+
+# Run tests
+pytest
 ```
 
-## Configuration
+### Code Style
 
-The following environment variables can be set in `.env`:
+This project uses:
+- [Black](https://github.com/psf/black) for code formatting
+- [isort](https://github.com/PyCQA/isort) for import sorting
+- [mypy](https://mypy.readthedocs.io/) for static type checking
 
-- `REPO_CLONE_DIR`: Directory for cloning repositories
-- `LANCEDB_PATH`: Path to the LanceDB database
-- `EMBEDDING_MODEL_NAME`: Name of the embedding model to use
+```bash
+# Format code
+black .
 
-## GitHub Webhook Integration
+# Sort imports
+isort .
 
-The system includes a webhook handler that can automatically trigger incremental indexing when code is pushed to GitHub:
+# Type checking
+mypy .
+```
 
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on how to submit pull requests.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Ollama](https://ollama.ai/) for the local LLM framework
+- [LanceDB](https://lancedb.com/) for vector database
+- [FastAPI](https://fastapi.tiangolo.com/) for the web framework
+- [LangChain](https://python.langchain.com/) for LLM orchestration
 ```bash
 uv run python -m app.webhook_handler
 ```
