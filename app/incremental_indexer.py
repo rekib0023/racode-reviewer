@@ -1,3 +1,4 @@
+import logging
 import os
 
 # Set tokenizers parallelism to avoid deadlocks with forked processes
@@ -21,6 +22,7 @@ from app.vector_store import (
 
 # Load environment variables from .env file
 load_dotenv()
+logger = logging.getLogger("app")
 
 
 def get_changed_files(
@@ -75,10 +77,10 @@ def get_changed_files(
             "deleted": deleted_files,
         }
     except GitCommandError as e:
-        print(f"Git command error when getting changed files: {e}")
+        logger.error(f"Git command error when getting changed files: {e}")
         return {"added": [], "modified": [], "deleted": []}
     except Exception as e:
-        print(f"Unexpected error when getting changed files: {e}")
+        logger.error(f"Unexpected error when getting changed files: {e}")
         return {"added": [], "modified": [], "deleted": []}
 
 
@@ -115,12 +117,12 @@ def delete_file_chunks_from_db(db_table, repo_url: str, file_paths: List[str]) -
         count_after = len(db_table.search().where(filter_condition).to_list())
         deleted_count = count_before - count_after
 
-        print(
+        logger.info(
             f"Deleted {deleted_count} chunks for {len(file_paths)} files from the database."
         )
         return deleted_count
     except Exception as e:
-        print(f"Error deleting chunks from database: {e}")
+        logger.error(f"Error deleting chunks from database: {e}")
         return 0
 
 
@@ -154,10 +156,12 @@ def process_and_add_file_chunks(
         try:
             full_path = os.path.join(local_repo_path, file_path)
             if not os.path.exists(full_path):
-                print(f"Warning: File {file_path} does not exist at {full_path}")
+                logger.warning(
+                    f"Warning: File {file_path} does not exist at {full_path}"
+                )
                 continue
 
-            print(f"Processing file: {file_path}")
+            logger.info(f"Processing file: {file_path}")
 
             with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
@@ -180,21 +184,21 @@ def process_and_add_file_chunks(
                     )
                     all_chunks_to_add.append(chunk_schema_item)
         except Exception as e:
-            print(f"Error processing file {file_path}: {e}")
+            logger.error(f"Error processing file {file_path}: {e}")
 
     # Add all chunks to the database in a single batch
     if all_chunks_to_add:
         try:
             db_table.add(all_chunks_to_add)
-            print(
+            logger.info(
                 f"Added {len(all_chunks_to_add)} chunks from {len(file_paths)} files to the database."
             )
             return len(all_chunks_to_add)
         except Exception as e:
-            print(f"Error adding chunks to database: {e}")
+            logger.error(f"Error adding chunks to database: {e}")
             return 0
     else:
-        print(f"No chunks to add from {len(file_paths)} files.")
+        logger.info(f"No chunks to add from {len(file_paths)} files.")
         return 0
 
 
@@ -212,8 +216,10 @@ def incremental_index_repository(
     Returns:
         A dictionary with statistics about the indexing process.
     """
-    print(f"--- Starting incremental indexing for repository: {repo_url} ---")
-    print(f"Comparing changes between {old_commit} and {new_commit}")
+    logger.info(
+        f"--- Starting incremental indexing for repository: {repo_url} between {old_commit} and {new_commit} ---"
+    )
+    logger.info(f"Comparing changes between {old_commit} and {new_commit}")
     start_time = time.time()
 
     # Load Configuration
@@ -228,59 +234,59 @@ def incremental_index_repository(
     local_repo_path = os.path.join(repo_clone_dir, repo_name)
 
     # Initialize Services (Embedding Model and DB)
-    print("\nStep 1: Initializing services...")
+    logger.info("\nStep 1: Initializing services and repository...")
     try:
         embedding_model = initialize_embedding_model(embedding_model_name)
         db_conn = get_lancedb_conn(lancedb_path)
         code_table = create_code_table_if_not_exists(db_conn, table_name)
 
         if code_table is None:
-            print("Error: Failed to create or open LanceDB table. Aborting.")
+            logger.error("Failed to create or open LanceDB table. Aborting.")
             return {
                 "status": "error",
                 "error": "Failed to create or open LanceDB table",
                 "elapsed_time": time.time() - start_time,
             }
     except Exception as e:
-        print(f"Error during service initialization: {e}. Aborting.")
+        logger.error(f"Error during service/repo initialization: {e}. Aborting.")
         return {
             "status": "error",
             "error": f"Service initialization failed: {str(e)}",
             "elapsed_time": time.time() - start_time,
         }
-    print("Services initialized successfully.")
+    logger.info("Services and repository initialized successfully.")
 
     # Clone or Pull Repository
-    print(f"\nStep 2: Ensuring repository is up-to-date at {local_repo_path}...")
+    logger.info(f"\nStep 2: Ensuring repository is up-to-date at {local_repo_path}...")
     repo = clone_or_pull_repository(repo_url, local_repo_path)
     if not repo:
-        print("Error: Failed to clone or update repository. Aborting.")
+        logger.error("Failed to clone or update repository. Aborting.")
         return {
             "status": "error",
             "error": "Failed to clone or update repository",
             "elapsed_time": time.time() - start_time,
         }
-    print("Repository ready.")
+    logger.info("Repository ready.")
 
     # Identify Changed Files
-    print("\nStep 3: Identifying changed files...")
+    logger.info("\nStep 3: Identifying changed files...")
     changed_files = get_changed_files(repo, old_commit, new_commit)
 
     added_count = len(changed_files["added"])
     modified_count = len(changed_files["modified"])
     deleted_count = len(changed_files["deleted"])
 
-    print(
+    logger.info(
         f"Found {added_count} added, {modified_count} modified, and {deleted_count} deleted Python files."
     )
 
     # Process Deleted and Modified Files (remove from DB)
-    print("\nStep 4: Removing chunks for deleted and modified files...")
+    logger.info("\nStep 4: Removing chunks for deleted and modified files...")
     files_to_delete = changed_files["deleted"] + changed_files["modified"]
     deleted_chunks = delete_file_chunks_from_db(code_table, repo_url, files_to_delete)
 
     # Process Added and Modified Files (add to DB)
-    print("\nStep 5: Processing and adding chunks for new and modified files...")
+    logger.info("\nStep 5: Processing and adding chunks for new and modified files...")
     files_to_add = changed_files["added"] + changed_files["modified"]
     added_chunks = process_and_add_file_chunks(
         code_table, repo_url, local_repo_path, files_to_add, embedding_model
@@ -289,13 +295,15 @@ def incremental_index_repository(
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    print(f"\n--- Incremental indexing finished in {elapsed_time:.2f} seconds. ---")
-    print("Summary:")
-    print(
+    logger.info(
+        f"\n--- Incremental indexing finished in {elapsed_time:.2f} seconds. ---"
+    )
+    logger.info("Summary:")
+    logger.info(
         f"  - Files: {added_count} added, {modified_count} modified, {deleted_count} deleted"
     )
-    print(f"  - Chunks: {deleted_chunks} removed, {added_chunks} added")
-    print(f"  - Total rows in table '{table_name}': {len(code_table)}")
+    logger.info(f"  - Chunks: {deleted_chunks} removed, {added_chunks} added")
+    logger.info(f"Total rows in table '{table_name}': {len(code_table)}")
 
     return {
         "status": "success",
@@ -323,7 +331,7 @@ if __name__ == "__main__":
     if not all(
         os.getenv(k) for k in ["REPO_CLONE_DIR", "LANCEDB_PATH", "EMBEDDING_MODEL_NAME"]
     ):
-        print(
+        logger.error(
             "Error: Please ensure REPO_CLONE_DIR, LANCEDB_PATH, and EMBEDDING_MODEL_NAME are set in your .env file."
         )
     else:

@@ -1,6 +1,9 @@
+import logging
+
 import requests
 
 GITHUB_API_BASE_URL = "https://api.github.com"
+logger = logging.getLogger("app")
 
 
 def fetch_pr_diff(
@@ -20,18 +23,18 @@ def fetch_pr_diff(
         return response.text  # The diff content
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 403:
-            print(
+            logger.error(
                 f"Error fetching PR diff: Forbidden. Check token permissions. Details: {e.response.text}"
             )
         elif e.response.status_code == 404:
-            print(
+            logger.error(
                 f"Error fetching PR diff: Not Found. Check owner, repo, or pull number. Details: {e.response.text}"
             )
         else:
-            print(f"Error fetching PR diff: {e}. Details: {e.response.text}")
+            logger.error(f"Error fetching PR diff: {e}. Details: {e.response.text}")
         return None
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching PR diff: {e}")
+        logger.error(f"Error fetching PR diff: {e}")
         return None
 
 
@@ -50,11 +53,12 @@ def post_pr_comment(
     try:
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
-        print(f"Successfully posted general comment to PR #{issue_number}.")
+        logger.info(f"Successfully posted general comment to PR #{issue_number}.")
         return True
     except requests.exceptions.RequestException as e:
-        print(f"Error posting general comment to PR #{issue_number}: {e}")
+        logger.error(f"Error posting general comment to PR #{issue_number}: {e}")
         return False
+
 
 def post_review(
     installation_token: str, owner: str, repo: str, pull_number: int, comments: list
@@ -66,11 +70,11 @@ def post_review(
         "X-GitHub-Api-Version": "2022-11-28",
     }
     url = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/pulls/{pull_number}/reviews"
-    
+
     # If there are no comments, we can post a general approval or do nothing.
     # For now, we will only post if there are comments.
     if not comments:
-        print("No comments to post, skipping review submission.")
+        logger.info("No comments to post, skipping review submission.")
         return True
 
     payload = {
@@ -82,11 +86,15 @@ def post_review(
     try:
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
-        print(f"Successfully posted review with {len(comments)} comments to PR #{pull_number}.")
+        logger.info(
+            f"Successfully posted review with {len(comments)} comments to PR #{pull_number}."
+        )
         return True
     except requests.exceptions.HTTPError as e:
-        print(f"Error posting review to PR #{pull_number}: {e}. Details: {e.response.text}")
+        logger.error(
+            f"Error posting review to PR #{pull_number}: {e}. Details: {e.response.text}"
+        )
         return False
     except requests.exceptions.RequestException as e:
-        print(f"Error posting review to PR #{pull_number}: {e}")
+        logger.error(f"Error posting review to PR #{pull_number}: {e}")
         return False

@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 
@@ -16,6 +17,7 @@ from app.vector_store import (
 
 # Load environment variables from .env file
 load_dotenv()
+logger = logging.getLogger("app")
 
 
 def index_repository(repo_url: str):
@@ -25,7 +27,7 @@ def index_repository(repo_url: str):
     Args:
         repo_url: The URL of the Git repository to index.
     """
-    print(f"--- Starting indexing process for repository: {repo_url} ---")
+    logger.info(f"--- Starting indexing process for repository: {repo_url} ---")
     start_time = time.time()
 
     # 1. Load Configuration
@@ -40,7 +42,7 @@ def index_repository(repo_url: str):
     local_repo_path = os.path.join(repo_clone_dir, repo_name)
 
     # 2. Initialize Services (Embedding Model and DB)
-    print("\nStep 1: Initializing services...")
+    logger.info("\nStep 1: Initializing services...")
     try:
         embedding_model = initialize_embedding_model(embedding_model_name)
         db_conn = get_lancedb_conn(lancedb_path)
@@ -51,23 +53,23 @@ def index_repository(repo_url: str):
         # Now that we understand the issue, we can remove the debugging code
         # and use an explicit check for None
         if code_table is None:
-            print("Error: Failed to create or open LanceDB table. Aborting.")
+            logger.error("Error: Failed to create or open LanceDB table. Aborting.")
             return
     except Exception as e:
-        print(f"Error during service initialization: {e}. Aborting.")
+        logger.error(f"Error during service initialization: {e}. Aborting.")
         return
-    print("Services initialized successfully.")
+    logger.info("Services initialized successfully.")
 
     # 3. Clone or Pull Repository
-    print(f"\nStep 2: Cloning/pulling repository into {local_repo_path}...")
+    logger.info(f"\nStep 2: Cloning/pulling repository into {local_repo_path}...")
     repo = clone_or_pull_repository(repo_url, local_repo_path)
     if not repo:
-        print("Error: Failed to clone repository. Aborting.")
+        logger.error("Error: Failed to clone repository. Aborting.")
         return
-    print("Repository ready.")
+    logger.info("Repository ready.")
 
     # 4. Walk Filesystem, Parse, Embed, and Prepare Data
-    print("\nStep 3: Parsing, embedding, and preparing data...")
+    logger.info("\nStep 3: Parsing, embedding, and preparing data...")
     all_chunks_to_add = []
     files_processed = 0
     for root, _, files in os.walk(local_repo_path):
@@ -80,7 +82,7 @@ def index_repository(repo_url: str):
             if file.endswith(".py"):
                 file_path = os.path.join(root, file)
                 relative_file_path = os.path.relpath(file_path, local_repo_path)
-                print(f"  - Processing file: {relative_file_path}")
+                logger.info(f"  - Processing file: {relative_file_path}")
                 files_processed += 1
                 try:
                     with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -105,31 +107,33 @@ def index_repository(repo_url: str):
                             all_chunks_to_add.append(chunk_schema_item)
 
                 except Exception as e:
-                    print(f"    - Error processing file {relative_file_path}: {e}")
+                    logger.error(
+                        f"    - Error processing file {relative_file_path}: {e}"
+                    )
 
-    print(
+    logger.info(
         f"Data preparation complete. Found {len(all_chunks_to_add)} chunks in {files_processed} Python files."
     )
 
     # 5. Batch Insert into LanceDB
     if all_chunks_to_add:
-        print("\nStep 4: Adding data to LanceDB...")
+        logger.info("\nStep 4: Adding data to LanceDB...")
         try:
             # LanceDB's add method can take a list of Pydantic objects directly
             code_table.add(all_chunks_to_add)
-            print(
+            logger.info(
                 f"Successfully added {len(all_chunks_to_add)} chunks to the '{table_name}' table."
             )
         except Exception as e:
-            print(f"Error adding data to LanceDB: {e}")
+            logger.error(f"Error adding data to LanceDB: {e}")
     else:
-        print("\nStep 4: No new chunks to add to LanceDB.")
+        logger.info("\nStep 4: No new chunks to add to LanceDB.")
 
     end_time = time.time()
-    print(
+    logger.info(
         f"\n--- Indexing process finished in {end_time - start_time:.2f} seconds. ---"
     )
-    print(f"Total rows in table '{table_name}': {len(code_table)}")
+    logger.info(f"Total rows in table '{table_name}': {len(code_table)}")
 
 
 # Example usage: Run this script directly to index a repository
@@ -143,7 +147,7 @@ if __name__ == "__main__":
     if not all(
         os.getenv(k) for k in ["REPO_CLONE_DIR", "LANCEDB_PATH", "EMBEDDING_MODEL_NAME"]
     ):
-        print(
+        logger.error(
             "Error: Please ensure REPO_CLONE_DIR, LANCEDB_PATH, and EMBEDDING_MODEL_NAME are set in your .env file."
         )
     else:

@@ -3,6 +3,8 @@ import os
 # Set tokenizers parallelism to avoid deadlocks with forked processes
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+import logging
+import logging.config
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
@@ -15,11 +17,16 @@ from app.common.webhook_utils import extract_push_event_info, parse_webhook_payl
 from app.diff_parser import FileDiff, parse_diff
 from app.incremental_indexer import incremental_index_repository
 from app.indexer import index_repository
+from app.logging_config import setup_logging
 from app.prompts import CODE_REVIEW_PROMPT_TEMPLATE
 from app.rag_retriever import retrieve_relevant_code_chunks
 
 from .auth import get_installation_access_token
 from .github_client import fetch_pr_diff, post_review
+
+# Initialize logging
+setup_logging()
+logger = logging.getLogger("app")
 
 load_dotenv()
 
@@ -38,9 +45,11 @@ class SafeChatOllama(ChatOllama):
 
 try:
     llm = SafeChatOllama(model="qwen2.5-coder:7b")
-    print("Successfully connected to Ollama model.")
+    logger.info("Successfully connected to Ollama model.")
 except Exception as e:
-    print(f"Failed to connect to Ollama. Please ensure Ollama is running. Error: {e}")
+    logger.error(
+        f"Failed to connect to Ollama. Please ensure Ollama is running. Error: {e}"
+    )
     llm = None
 
 # --- Helper Functions ---
@@ -50,7 +59,7 @@ async def generate_review_for_file(
     chain, file_diff: FileDiff, repo_url: str
 ) -> List[Dict[str, Any]]:
     """Generates review comments for a single file diff using RAG."""
-    print(f"Generating review for file: {file_diff.path}")
+    logger.info(f"Generating review for file: {file_diff.path}")
     try:
         # 1. Retrieve context using RAG
         codebase_context = retrieve_relevant_code_chunks(
@@ -67,26 +76,28 @@ async def generate_review_for_file(
         )
 
         if review_json:
-            print(f"Received {len(review_json)} review comments for {file_diff.path}.")
+            logger.info(
+                f"Received {len(review_json)} review comments for {file_diff.path}."
+            )
             return review_json
         else:
-            print(f"No review comments generated for {file_diff.path}.")
+            logger.info(f"No review comments generated for {file_diff.path}.")
             return []
 
     except Exception as e:
-        print(f"Error generating review for {file_diff.path}: {e}")
+        logger.error(f"Error generating review for {file_diff.path}: {e}")
         return []
 
 
 async def process_installation_event(full_name: str):
     """Process an installation event by triggering the incremental indexing pipeline."""
-    print(f"Processing installation event for repo: {full_name}")
+    logger.info(f"Processing installation event for repo: {full_name}")
     index_repository(f"https://github.com/{full_name}.git")
 
 
 async def process_push_event(push_info: Dict[str, str]):
     """Process a push event by triggering the incremental indexing pipeline."""
-    print(f"Processing push event for repository: {push_info['repo_name']}")
+    logger.info(f"Processing push event for repository: {push_info['repo_name']}")
     incremental_index_repository(
         push_info["repo_url"], push_info["before_commit"], push_info["after_commit"]
     )
@@ -101,7 +112,7 @@ async def handle_pull_request_event(payload: Dict[str, Any]):
     """
     installation_id = payload.get("installation", {}).get("id")
     if not installation_id:
-        print("Error: Installation ID missing.")
+        logger.error("Error: Installation ID missing.")
         return
 
     try:
@@ -114,20 +125,20 @@ async def handle_pull_request_event(payload: Dict[str, Any]):
         pull_number = pull_request.get("number")
 
         if not all([owner, repo_name, repo_url, pull_number]):
-            print("Error: Missing PR details in payload.")
+            logger.error("Error: Missing PR details in payload.")
             return
 
         diff_content = fetch_pr_diff(token, owner, repo_name, pull_number)
         if not diff_content:
-            print(f"Failed to fetch diff for PR #{pull_number}.")
+            logger.error(f"Failed to fetch diff for PR #{pull_number}.")
             return
 
-        print(f"Successfully fetched diff for PR #{pull_number}. Parsing diff...")
+        logger.info(f"Successfully fetched diff for PR #{pull_number}. Parsing diff...")
         file_diffs = parse_diff(diff_content)
-        print(f"Parsed diff into {len(file_diffs)} file(s).")
+        logger.info(f"Parsed diff into {len(file_diffs)} file(s).")
 
         if not llm:
-            print("Error: LLM is not available. Cannot process review.")
+            logger.error("Error: LLM is not available. Cannot process review.")
             return
 
         # Create the LangChain chain
@@ -155,20 +166,20 @@ async def handle_pull_request_event(payload: Dict[str, Any]):
                         }
                     )
                 else:
-                    print(
+                    logger.warning(
                         f"Warning: Could not map line {line_number} for {file_diff.path}. Comment will be skipped."
                     )
 
         if all_review_comments:
-            print(
+            logger.info(
                 f"Submitting a single review with {len(all_review_comments)} comments."
             )
             post_review(token, owner, repo_name, pull_number, all_review_comments)
         else:
-            print("No actionable comments generated. No review will be posted.")
+            logger.info("No actionable comments generated. No review will be posted.")
 
     except Exception as e:
-        print(f"An error occurred in the webhook handler: {e}")
+        logger.error(f"An error occurred in the webhook handler: {e}")
 
 
 @app.post("/api/webhook")

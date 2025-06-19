@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,7 @@ LANGUAGE_BUILD_PATH = os.path.join(
 PYTHON_LANGUAGE_GRAMMAR_PATH = "tree_sitter_python.language"
 
 _PYTHON_LANG = None
+logger = logging.getLogger("app")
 
 
 def get_python_language() -> Optional[Language]:
@@ -27,7 +29,7 @@ def get_python_language() -> Optional[Language]:
         # Attempt to load from a pre-built library if it exists
         if os.path.exists(LANGUAGE_BUILD_PATH):
             _PYTHON_LANG = Language(LANGUAGE_BUILD_PATH, "python")
-            print(f"Loaded Python grammar from: {LANGUAGE_BUILD_PATH}")
+            logger.info(f"Loaded Python grammar from: {LANGUAGE_BUILD_PATH}")
             return _PYTHON_LANG
 
         # Fallback: Try to load it assuming tree-sitter-python package handles it
@@ -39,12 +41,14 @@ def get_python_language() -> Optional[Language]:
             from tree_sitter_languages import get_language
 
             _PYTHON_LANG = get_language("python")
-            print("Loaded Python grammar using tree-sitter-languages.")
+            logger.info("Loaded Python grammar using tree-sitter-languages.")
             return _PYTHON_LANG
         except ImportError:
-            print("tree-sitter-languages not found, trying direct import.")
+            logger.warning("tree-sitter-languages not found, trying direct import.")
         except Exception as e:
-            print(f"Could not load Python grammar via tree-sitter-languages: {e}")
+            logger.error(
+                f"Could not load Python grammar via tree-sitter-languages: {e}"
+            )
 
         # If the above fails, it implies the grammar isn't readily available.
         # The user might need to ensure tree-sitter-python is correctly installed and its grammar compiled.
@@ -57,17 +61,17 @@ def get_python_language() -> Optional[Language]:
         # print(f"Built and loaded Python grammar to: {LANGUAGE_BUILD_PATH}")
         # return _PYTHON_LANG
 
-        print("Error: Could not load Tree-sitter Python language grammar.")
-        print(
+        logger.error("Error: Could not load Tree-sitter Python language grammar.")
+        logger.error(
             "Please ensure 'tree-sitter-python' is installed and the grammar is compiled."
         )
-        print(
+        logger.error(
             "You may need to run: pip install tree-sitter-languages or manually build the grammar."
         )
         return None
 
     except Exception as e:
-        print(f"An unexpected error occurred while loading Python grammar: {e}")
+        logger.error(f"An unexpected error occurred while loading Python grammar: {e}")
         return None
 
 
@@ -97,7 +101,7 @@ def parse_and_extract_chunks(file_path: str, code_content: str) -> List[Dict[str
     try:
         tree = parser.parse(bytes(code_content, "utf8"))
     except Exception as e:
-        print(f"Error parsing file {file_path}: {e}")
+        logger.error(f"Error parsing file {file_path}: {e}")
         return []
 
     chunks = []
@@ -118,13 +122,12 @@ def parse_and_extract_chunks(file_path: str, code_content: str) -> List[Dict[str
         query = PY_LANGUAGE.query(query_string)
         captures = query.captures(tree.root_node)
     except Exception as e:
-        print(f"Error executing tree-sitter query on {file_path}: {e}")
+        logger.error(f"Error executing tree-sitter query on {file_path}: {e}")
         return []
 
     # Process captures to extract chunk information
     # We iterate through captures, looking for the main definition nodes
     # and their associated names.
-    current_chunk = None
     for node, capture_name in captures:
         if capture_name == "function.definition" or capture_name == "class.definition":
             chunk_type = (
@@ -174,12 +177,12 @@ def parse_and_extract_chunks(file_path: str, code_content: str) -> List[Dict[str
 if __name__ == "__main__":
     # Ensure tree-sitter-languages is installed for this example to work easily
     # pip install tree-sitter-languages
-    print("Attempting to load Python language...")
+    logger.info("Attempting to load Python language...")
     lang = get_python_language()
     if not lang:
-        print("Exiting due to language loading failure.")
+        logger.error("Exiting due to language loading failure.")
         exit(1)
-    print("Python language loaded successfully.")
+    logger.info("Python language loaded successfully.")
 
     sample_code = """
 # This is a comment
@@ -198,21 +201,21 @@ async def my_async_function():
     pass
     """
     sample_file_path = "example.py"
-    print(f"\nParsing sample code from '{sample_file_path}':")
+    logger.info(f"\nParsing sample code from '{sample_file_path}':")
     extracted_chunks = parse_and_extract_chunks(sample_file_path, sample_code)
 
     if extracted_chunks:
-        print(f"\nFound {len(extracted_chunks)} chunks:")
+        logger.info(f"\nFound {len(extracted_chunks)} chunks:")
         for i, chunk in enumerate(extracted_chunks):
-            print(f"--- Chunk {i + 1} ---")
-            print(f"  ID: {chunk['id']}")
-            print(f"  Name: {chunk['chunk_name']}")
-            print(f"  Type: {chunk['type']}")
-            print(f"  Lines: {chunk['start_line']}-{chunk['end_line']}")
+            logger.info(f"--- Chunk {i + 1} ---")
+            logger.info(f"  ID: {chunk['id']}")
+            logger.info(f"  Name: {chunk['chunk_name']}")
+            logger.info(f"  Type: {chunk['type']}")
+            logger.info(f"  Lines: {chunk['start_line']}-{chunk['end_line']}")
             snippet_text = chunk["code"][:50].replace("\n", " ")
-            print(f"  Code Snippet (first 50 chars): {snippet_text}...")
+            logger.info(f"  Code Snippet (first 50 chars): {snippet_text}...")
     else:
-        print("No chunks extracted or parsing failed.")
+        logger.info("No chunks extracted or parsing failed.")
 
     # Test with a potentially problematic file (e.g., syntax error)
     error_code = """def func_with_syntax_error(:
