@@ -61,7 +61,12 @@ def post_pr_comment(
 
 
 def post_review(
-    installation_token: str, owner: str, repo: str, pull_number: int, comments: list
+    installation_token: str,
+    owner: str,
+    repo: str,
+    pull_number: int,
+    pr_summary_body: str,
+    comments: list,
 ) -> bool:
     """Posts a formal review with line-specific comments to a pull request."""
     headers = {
@@ -71,15 +76,17 @@ def post_review(
     }
     url = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/pulls/{pull_number}/reviews"
 
-    # If there are no comments, we can post a general approval or do nothing.
-    # For now, we will only post if there are comments.
-    if not comments:
-        logger.info("No comments to post, skipping review submission.")
+    if not pr_summary_body and not comments:
+        logger.info(
+            "No summary body or inline comments to post, skipping review submission."
+        )
         return True
 
     payload = {
-        "body": "AI code review complete. See comments below.",
-        "event": "COMMENT",
+        "body": pr_summary_body
+        if pr_summary_body
+        else "Review complete.",  # Default body if summary is empty but comments exist
+        "event": "COMMENT",  # Or 'REQUEST_CHANGES' / 'APPROVE' based on logic
         "comments": comments,  # A list of comment objects
     }
 

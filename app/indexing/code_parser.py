@@ -176,6 +176,7 @@ def parse_and_extract_chunks(file_path: str, code_content: str) -> List[Dict[str
 # Example Usage (for testing this module directly)
 if __name__ == "__main__":
     from app.core.logging_config import setup_logging
+
     setup_logging()
     # Ensure tree-sitter-languages is installed for this example to work easily
     # pip install tree-sitter-languages
