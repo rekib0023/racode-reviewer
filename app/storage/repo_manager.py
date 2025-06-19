@@ -58,6 +58,9 @@ def clone_or_pull_repository(repo_url: str, local_path: str) -> Repo | None:
 
 # Example usage (optional, for testing this module directly)
 if __name__ == "__main__":
+    from app.core.logging_config import setup_logging
+
+    setup_logging()
     test_repo_url = "https://github.com/gitpython-developers/GitPython.git"  # A public repo for testing
     test_local_path = "./temp_repo_clone"
 

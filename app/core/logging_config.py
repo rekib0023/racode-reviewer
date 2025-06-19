@@ -52,5 +52,10 @@ LOGGING_CONFIG = {
 
 
 def setup_logging():
-    """Initializes the logging configuration."""
     logging.config.dictConfig(LOGGING_CONFIG)
+    # Optionally, integrate with Pydantic settings for log level
+    # from app.core.config import settings
+    # logging.getLogger("app").setLevel(settings.LOG_LEVEL.upper())
+    # logging.getLogger("uvicorn").setLevel(settings.LOG_LEVEL.upper())
+    # logging.getLogger("fastapi").setLevel(settings.LOG_LEVEL.upper())
+    # logging.getLogger("root").setLevel(settings.LOG_LEVEL.upper())

@@ -8,28 +8,25 @@ import logging
 import logging.config
 from typing import Any, Dict, List
 
-from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama.chat_models import ChatOllama
 
-from app.common.webhook_utils import extract_push_event_info, parse_webhook_payload
-from app.diff_parser import FileDiff, parse_diff
-from app.incremental_indexer import incremental_index_repository
-from app.indexer import index_repository
-from app.logging_config import setup_logging
-from app.prompts import CODE_REVIEW_PROMPT_TEMPLATE
-from app.rag_retriever import retrieve_relevant_code_chunks
-
-from .auth import get_installation_access_token
-from .github_client import fetch_pr_diff, post_review
+from app.core.config import settings
+from app.core.logging_config import setup_logging
+from app.github.auth import get_installation_access_token
+from app.github.client import fetch_pr_diff, post_review
+from app.github.webhook_utils import extract_push_event_info, parse_webhook_payload
+from app.indexing.incremental_indexer import incremental_index_repository
+from app.indexing.indexer import index_repository
+from app.llm.prompts import CODE_REVIEW_PROMPT_TEMPLATE
+from app.llm.rag_retriever import retrieve_relevant_code_chunks
+from app.utils.diff_parser import FileDiff, parse_diff
 
 # Initialize logging
-setup_logging()
+setup_logging()  # Initializes logging based on app.core.logging_config
 logger = logging.getLogger("app")
-
-load_dotenv()
 
 # --- FastAPI App Initialization ---
 app = FastAPI(title="Code Reviewer API")
@@ -45,7 +42,7 @@ class SafeChatOllama(ChatOllama):
 
 
 try:
-    llm = SafeChatOllama(model="qwen2.5-coder:7b")
+    llm = SafeChatOllama(model=settings.CHAT_MODEL_NAME)
     logger.info("Successfully connected to Ollama model.")
 except Exception as e:
     logger.error(

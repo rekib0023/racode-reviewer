@@ -175,6 +175,8 @@ def parse_and_extract_chunks(file_path: str, code_content: str) -> List[Dict[str
 
 # Example Usage (for testing this module directly)
 if __name__ == "__main__":
+    from app.core.logging_config import setup_logging
+    setup_logging()
     # Ensure tree-sitter-languages is installed for this example to work easily
     # pip install tree-sitter-languages
     logger.info("Attempting to load Python language...")
@@ -221,13 +223,13 @@ async def my_async_function():
     error_code = """def func_with_syntax_error(:
         pass"""
     error_file_path = "error.py"
-    print(f"\nParsing sample code with syntax error from '{error_file_path}':")
+    logger.info(f"\nParsing sample code with syntax error from '{error_file_path}':")
     # Tree-sitter is robust and will often produce a partial AST with error nodes.
     # Our current chunking logic might still find valid preceding chunks or none.
     error_chunks = parse_and_extract_chunks(error_file_path, error_code)
     if error_chunks:
-        print(f"Found {len(error_chunks)} chunks despite errors.")
+        logger.info(f"Found {len(error_chunks)} chunks despite errors.")
     else:
-        print(
+        logger.info(
             "No chunks extracted from file with errors, or parsing failed more severely."
         )

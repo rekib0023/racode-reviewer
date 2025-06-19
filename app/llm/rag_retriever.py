@@ -1,13 +1,13 @@
 import logging
-import os
 from typing import Dict, List
 
-from app.embedding_generator import get_embedding, initialize_embedding_model
-from app.utils import repo_url_to_table_name
-from app.vector_store import get_lancedb_conn
+from app.core.config import settings
+from app.indexing.embedding_generator import get_embedding, initialize_embedding_model
+from app.storage.vector_store import get_lancedb_conn
+from app.utils.general_utils import repo_url_to_table_name
 
-# --- Environment & Constants ---
-LANCEDB_PATH = os.getenv("LANCEDB_PATH", "./lancedb_data/db")
+# --- Configuration ---
+LANCEDB_PATH = settings.LANCEDB_PATH
 logger = logging.getLogger("app")
 
 

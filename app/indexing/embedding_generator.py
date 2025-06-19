@@ -4,17 +4,19 @@ import os
 # Set tokenizers parallelism to avoid deadlocks with forked processes
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from typing import Optional  # Removed List
+from typing import Optional
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
+
+from app.core.config import settings
 
 _MODEL_INSTANCE: Optional[SentenceTransformer] = None
 logger = logging.getLogger("app")
 
 
 def initialize_embedding_model(
-    model_name: str = "all-MiniLM-L6-v2",
+    model_name: str = settings.EMBEDDING_MODEL_NAME,  # Default from settings
 ) -> SentenceTransformer:
     """
     Initializes and returns a SentenceTransformer model.
@@ -34,11 +36,9 @@ def initialize_embedding_model(
     if _MODEL_INSTANCE is None:
         logger.info(f"Initializing embedding model: {model_name}...")
         try:
-            # You can specify a cache folder for models if needed
-            # cache_folder = os.getenv("SENTENCE_TRANSFORMERS_HOME")
-            _MODEL_INSTANCE = SentenceTransformer(
-                model_name
-            )  # , cache_folder=cache_folder)
+            # Use SENTENCE_TRANSFORMERS_HOME from settings if provided
+            cache_folder = settings.SENTENCE_TRANSFORMERS_HOME
+            _MODEL_INSTANCE = SentenceTransformer(model_name, cache_folder=cache_folder)
             logger.info(f"Embedding model '{model_name}' loaded successfully.")
         except Exception as e:
             logger.error(
@@ -85,47 +85,61 @@ def get_embedding(
 
 # Example Usage (for testing this module directly)
 if __name__ == "__main__":
+    # Setup basic logging for the script execution
+    from app.core.logging_config import setup_logging
+
+    setup_logging()
+    logger.info("Running embedding_generator.py directly.")
+
     # Ensure sentence-transformers is installed: pip install sentence-transformers
-    logger.info("--- Testing Embedding Generation ---")
-
-    # Test model initialization
-    try:
-        test_model_name = "all-MiniLM-L6-v2"  # A common, relatively small model
-        logger.info(f"Attempting to initialize model: {test_model_name}")
-        transformer_model = initialize_embedding_model(test_model_name)
-    except Exception as e:
-        logger.error(f"Failed to initialize model for testing: {e}")
-        transformer_model = None
-
-    if transformer_model:
+    logger.info(f"Using EMBEDDING_MODEL_NAME: {settings.EMBEDDING_MODEL_NAME}")
+    if settings.SENTENCE_TRANSFORMERS_HOME:
         logger.info(
-            f"Model '{test_model_name}' initialized. Embedding dimension: {transformer_model.get_sentence_embedding_dimension()}"
+            f"Using SENTENCE_TRANSFORMERS_HOME: {settings.SENTENCE_TRANSFORMERS_HOME}"
         )
-
-        sample_code_chunks = [
-            "def hello_world():\n    print('Hello, world!')",
-            "class Calculator:\n    def add(self, x, y):\n        return x + y",
-            "import numpy as np",
-        ]
-
-        for i, chunk in enumerate(sample_code_chunks):
-            logger.info(f"\n--- Embedding Chunk {i + 1} ---")
-            logger.info(f"Code: {chunk[:50].replace('\n', ' ')}...")
-            embedding_vector = get_embedding(chunk, transformer_model)
-            if embedding_vector is not None:
-                logger.info(f"Embedding (first 5 values): {embedding_vector[:5]}")
-                logger.info(f"Embedding shape: {embedding_vector.shape}")
-            else:
-                logger.error("Failed to generate embedding.")
-
-        # Test with an empty chunk
-        logger.info("\n--- Embedding Empty Chunk ---")
-        empty_embedding = get_embedding("", transformer_model)
-        if empty_embedding is None:
-            logger.info("Correctly handled empty chunk (returned None).")
-        else:
-            logger.warning(
-                f"Unexpectedly got embedding for empty chunk: {empty_embedding}"
-            )
     else:
+        logger.info("SENTENCE_TRANSFORMERS_HOME not set, using default cache location.")
+
+    # Example: Initialize the model using settings
+    logger.info("--- Testing Embedding Model Initialization ---")
+    try:
+        # initialize_embedding_model will use settings.EMBEDDING_MODEL_NAME by default
+        model = initialize_embedding_model()
+        logger.info(
+            f"Model ({settings.EMBEDDING_MODEL_NAME}) initialized successfully."
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize model from settings: {e}")
+        # exit(1)
+
+    logger.info("--- Testing Embedding Generation ---")
+    test_sentences = [
+        "This is an example sentence.",
+        "Each sentence is converted to a vector.",
+    ]
+
+    if _MODEL_INSTANCE:  # Check if model was initialized
+        try:
+            embeddings = model.encode(test_sentences, convert_to_numpy=True)
+            if embeddings is not None:
+                logger.info(
+                    f"Generated embeddings for {len(test_sentences)} sentences."
+                )
+                logger.info(f"Shape of first embedding: {embeddings[0].shape}")
+            else:
+                logger.warning("Embedding generation returned None for list.")
+
+            single_embedding = model.encode(test_sentences[0], convert_to_numpy=True)
+            if single_embedding is not None:
+                logger.info("Generated embedding for a single sentence.")
+                logger.info(f"Shape of single embedding: {single_embedding.shape}")
+            else:
+                logger.warning("Single embedding generation returned None.")
+
+        except Exception as e:
+            logger.error(f"Error during embedding generation test: {e}")
+    else:
+        logger.warning(
+            "Skipping embedding generation test as model failed to initialize."
+        )
         logger.error("Skipping embedding tests as model initialization failed.")

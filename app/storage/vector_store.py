@@ -73,6 +73,9 @@ def create_code_table_if_not_exists(
 
 # Example usage (optional, for testing this module directly)
 if __name__ == "__main__":
+    from app.core.logging_config import setup_logging
+
+    setup_logging()
     test_db_path = "./temp_lancedb"
     test_table_name = "code_embeddings"
 

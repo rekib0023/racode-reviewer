@@ -2,18 +2,16 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 from typing import Any, Dict, Optional
 
-from dotenv import load_dotenv
 from fastapi import HTTPException, Request
 
-# Load environment variables from .env file
-load_dotenv()
+from app.core.config import settings
+
 logger = logging.getLogger("app")
 
-# Get GitHub webhook secret from environment variables
-GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
+# Get GitHub webhook secret from Pydantic settings
+GITHUB_WEBHOOK_SECRET = settings.GITHUB_WEBHOOK_SECRET
 if not GITHUB_WEBHOOK_SECRET:
     logger.warning(
         "GITHUB_WEBHOOK_SECRET not set. Webhook signature validation will be skipped."

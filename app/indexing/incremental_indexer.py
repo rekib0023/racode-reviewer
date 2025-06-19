@@ -7,21 +7,19 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import time
 from typing import Dict, List
 
-from dotenv import load_dotenv
 from git import GitCommandError, Repo
 
-from app.code_parser import parse_and_extract_chunks
-from app.embedding_generator import get_embedding, initialize_embedding_model
-from app.repo_manager import clone_or_pull_repository
-from app.utils import repo_url_to_table_name
-from app.vector_store import (
+from app.core.config import settings
+from app.indexing.code_parser import parse_and_extract_chunks
+from app.indexing.embedding_generator import get_embedding, initialize_embedding_model
+from app.storage.repo_manager import clone_or_pull_repository
+from app.storage.vector_store import (
     CodeChunkSchema,
     create_code_table_if_not_exists,
     get_lancedb_conn,
 )
+from app.utils.general_utils import repo_url_to_table_name
 
-# Load environment variables from .env file
-load_dotenv()
 logger = logging.getLogger("app")
 
 
@@ -222,10 +220,10 @@ def incremental_index_repository(
     logger.info(f"Comparing changes between {old_commit} and {new_commit}")
     start_time = time.time()
 
-    # Load Configuration
-    repo_clone_dir = os.getenv("REPO_CLONE_DIR", "./repos")
-    lancedb_path = os.getenv("LANCEDB_PATH", "./lancedb_data/db")
-    embedding_model_name = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+    # 1. Load Configuration from Pydantic settings
+    repo_clone_dir = settings.REPO_CLONE_DIR
+    lancedb_path = settings.LANCEDB_PATH
+    embedding_model_name = settings.EMBEDDING_MODEL_NAME
 
     # Derive a local path for the repo from its URL
     repo_name = "/".join(repo_url.split("/")[-2:]).replace(".git", "")
@@ -320,19 +318,33 @@ def incremental_index_repository(
 # Example usage: Run this script directly to test incremental indexing
 if __name__ == "__main__":
     # A small, well-known repository is a good example
-    sample_repo_url = "https://github.com/rekib0023/testing-rkb0023.git"
+    EXAMPLE_REPO_URL = "https://github.com/pallets/flask.git"
+    # You would typically get these from a webhook payload or other event source
+    # For testing, find two commit SHAs from the EXAMPLE_REPO_URL
+    # e.g., by cloning the repo and running `git log --oneline`
+    OLD_COMMIT_SHA = "<PASTE_OLD_COMMIT_SHA_HERE>"  # Replace with an actual commit SHA
+    NEW_COMMIT_SHA = "<PASTE_NEW_COMMIT_SHA_HERE>"  # Replace with a newer commit SHA
 
-    # For testing, we'll use HEAD~1 (previous commit) and HEAD (latest commit)
-    old_commit = "HEAD~1"
-    new_commit = "HEAD"
+    # Setup basic logging for the script execution
+    from app.core.logging_config import (
+        setup_logging,  # Import here for standalone script execution
+    )
 
-    # Before running, ensure your .env file is set up with:
-    # REPO_CLONE_DIR, LANCEDB_PATH, EMBEDDING_MODEL_NAME
-    if not all(
-        os.getenv(k) for k in ["REPO_CLONE_DIR", "LANCEDB_PATH", "EMBEDDING_MODEL_NAME"]
+    setup_logging()
+    logger.info("Running incremental_indexer.py directly.")
+
+    # Access settings (Pydantic settings automatically loads .env)
+    logger.info(f"Using REPO_CLONE_DIR: {settings.REPO_CLONE_DIR}")
+    logger.info(f"Using LANCEDB_PATH: {settings.LANCEDB_PATH}")
+    logger.info(f"Using EMBEDDING_MODEL_NAME: {settings.EMBEDDING_MODEL_NAME}")
+
+    if (
+        OLD_COMMIT_SHA == "<PASTE_OLD_COMMIT_SHA_HERE>"
+        or NEW_COMMIT_SHA == "<PASTE_NEW_COMMIT_SHA_HERE>"
     ):
-        logger.error(
-            "Error: Please ensure REPO_CLONE_DIR, LANCEDB_PATH, and EMBEDDING_MODEL_NAME are set in your .env file."
-        )
+        logger.error("Please replace placeholder commit SHAs in the __main__ block.")
     else:
-        incremental_index_repository(sample_repo_url, old_commit, new_commit)
+        stats = incremental_index_repository(
+            EXAMPLE_REPO_URL, OLD_COMMIT_SHA, NEW_COMMIT_SHA
+        )
+        logger.info(f"Incremental indexing complete. Stats: {stats}")

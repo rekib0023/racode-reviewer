@@ -1,16 +1,16 @@
 import logging
-import os
 import time
 
 import jwt
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.core.config import settings
+
 logger = logging.getLogger("app")
 
-GITHUB_APP_ID = os.getenv("GITHUB_APP_ID")
-GITHUB_PRIVATE_KEY = os.getenv("GITHUB_PRIVATE_KEY")
+# These are now loaded from Pydantic settings
+GITHUB_APP_ID = settings.GITHUB_APP_ID
+GITHUB_PRIVATE_KEY = settings.GITHUB_PRIVATE_KEY
 
 # Simple in-memory cache for installation tokens
 # {installation_id: {"token": "xyz", "expires_at": 1234567890}}
