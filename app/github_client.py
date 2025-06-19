@@ -38,7 +38,7 @@ def fetch_pr_diff(
 def post_pr_comment(
     installation_token: str, owner: str, repo: str, issue_number: int, body: str
 ) -> bool:
-    """Posts a comment to a given pull request (issue)."""
+    """Posts a general comment to a given pull request (issue)."""
     headers = {
         "Authorization": f"Bearer {installation_token}",
         "Accept": "application/vnd.github.v3+json",
@@ -49,14 +49,44 @@ def post_pr_comment(
 
     try:
         response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()  # Raises an exception for 4XX/5XX errors
-        print(f"Successfully posted comment to PR #{issue_number} in {owner}/{repo}.")
+        response.raise_for_status()
+        print(f"Successfully posted general comment to PR #{issue_number}.")
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error posting general comment to PR #{issue_number}: {e}")
+        return False
+
+def post_review(
+    installation_token: str, owner: str, repo: str, pull_number: int, comments: list
+) -> bool:
+    """Posts a formal review with line-specific comments to a pull request."""
+    headers = {
+        "Authorization": f"Bearer {installation_token}",
+        "Accept": "application/vnd.github.v3+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    url = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/pulls/{pull_number}/reviews"
+    
+    # If there are no comments, we can post a general approval or do nothing.
+    # For now, we will only post if there are comments.
+    if not comments:
+        print("No comments to post, skipping review submission.")
+        return True
+
+    payload = {
+        "body": "AI code review complete. See comments below.",
+        "event": "COMMENT",
+        "comments": comments,  # A list of comment objects
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        print(f"Successfully posted review with {len(comments)} comments to PR #{pull_number}.")
         return True
     except requests.exceptions.HTTPError as e:
-        print(
-            f"Error posting comment to PR #{issue_number} in {owner}/{repo}: {e}. Details: {e.response.text}"
-        )
+        print(f"Error posting review to PR #{pull_number}: {e}. Details: {e.response.text}")
         return False
     except requests.exceptions.RequestException as e:
-        print(f"Error posting comment to PR #{issue_number} in {owner}/{repo}: {e}")
+        print(f"Error posting review to PR #{pull_number}: {e}")
         return False

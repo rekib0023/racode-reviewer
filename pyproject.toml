@@ -27,4 +27,5 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     "python-dotenv>=1.1.0",
     "tree-sitter-languages",
+    "cryptography>=45.0.4",
 ]
