@@ -1,17 +1,12 @@
 import os
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from app.embedding_generator import get_embedding, initialize_embedding_model
-
-# --- Local Imports ---
+from app.utils import repo_url_to_table_name
 from app.vector_store import get_lancedb_conn
 
 # --- Environment & Constants ---
 LANCEDB_PATH = os.getenv("LANCEDB_PATH", "./lancedb_data/db")
-
-
-def REPO_URL_TO_TABLE_NAME(url: Any) -> str:
-    return "".join(e for e in url if e.isalnum())
 
 
 def format_retrieved_chunks(chunks: List[Dict]) -> str:
@@ -34,7 +29,7 @@ def retrieve_relevant_code_chunks(
     print(f"RAG: Starting retrieval for {file_path} in {repo_url}")
     try:
         db_conn = get_lancedb_conn(LANCEDB_PATH)
-        table_name = REPO_URL_TO_TABLE_NAME(repo_url)
+        table_name = repo_url_to_table_name(repo_url)
 
         if table_name not in db_conn.table_names():
             print(f"RAG: Table '{table_name}' not found. Skipping retrieval.")

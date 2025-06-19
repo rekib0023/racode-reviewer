@@ -57,16 +57,16 @@ Your response MUST be a valid JSON object. It should be a list of review comment
 Example of a valid JSON output:
 ```json
 [
-  {
+  {{
     "line_number": 15,
     "comment": "This list comprehension can be made more efficient by using a generator expression, especially if the list is large, to avoid creating the full list in memory.",
     "severity": 2
-  },
-  {
+  }},
+  {{
     "line_number": 28,
     "comment": "Potential SQL injection vulnerability here. The query should be parameterized instead of using an f-string to insert values directly.",
     "severity": 5
-  }
+  }}
 ]
 ```
 
