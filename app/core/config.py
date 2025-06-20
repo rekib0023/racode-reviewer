@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     GITHUB_APP_ID: str
     GITHUB_PRIVATE_KEY: str  # Should be the content of the .pem file
     GITHUB_WEBHOOK_SECRET: str = ""
+    GITHUB_APP_NAME: str
 
     # Optional: For sentence-transformers cache
     SENTENCE_TRANSFORMERS_HOME: Optional[str] = None

@@ -10,6 +10,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from app.core.logging_config import setup_logging
 from app.github.webhook_utils import extract_push_event_info, parse_webhook_payload
 from app.services.github_service import (
+    check_github_app_installation,
     handle_pull_request_event,
     process_installation_event,
     process_push_event,
@@ -28,6 +29,21 @@ app = FastAPI(title="Code Reviewer API")
 async def health_check():
     """Simple health check endpoint."""
     return {"status": "healthy", "message": "Code Reviewer API is running."}
+
+
+@app.get("/api/github/is-installed")
+async def is_github_app_installed(request: Request):
+    """Checks if the GitHub App is installed for the authenticated user."""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header missing or invalid",
+        )
+    token = auth_header.split(" ")[1]
+
+    is_installed = await check_github_app_installation(token)
+    return {"installed": is_installed}
 
 
 @app.post("/api/webhook")

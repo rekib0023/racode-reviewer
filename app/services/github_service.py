@@ -2,6 +2,9 @@ import asyncio
 import logging
 from typing import Any, Dict
 
+import httpx
+
+from app.core.config import settings
 from app.github.auth import get_installation_access_token
 from app.github.client import fetch_pr_diff, post_review
 from app.indexing.incremental_indexer import incremental_index_repository
@@ -16,6 +19,43 @@ async def process_installation_event(full_name: str):
     """Process an installation event by triggering the incremental indexing pipeline."""
     logger.info(f"Processing installation event for repo: {full_name}")
     await index_repository(f"https://github.com/{full_name}.git")
+
+
+async def check_github_app_installation(token: str) -> bool:
+    """Checks if the GitHub App is installed for the user authenticated with the given token."""
+    if not settings.GITHUB_APP_NAME:
+        logger.error("GITHUB_APP_NAME environment variable is not set.")
+        return False
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    url = "https://api.github.com/user/installations"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(url, headers=headers)
+            res.raise_for_status()
+            data = res.json()
+            installations = data.get("installations", [])
+            for inst in installations:
+                if inst.get("app_slug") == settings.GITHUB_APP_NAME:
+                    logger.info(
+                        f"App '{settings.GITHUB_APP_NAME}' is installed for the user."
+                    )
+                    return True
+            logger.info(
+                f"App '{settings.GITHUB_APP_NAME}' is not installed for the user."
+            )
+            return False
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error while checking installations: {e.response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"An error occurred while checking installations: {e}")
+            return False
 
 
 async def process_push_event(push_info: Dict[str, str]):
