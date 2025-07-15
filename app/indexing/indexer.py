@@ -3,6 +3,8 @@ import logging
 import os
 import time
 
+import requests
+
 from app.core.config import settings
 from app.indexing.code_parser import parse_and_extract_chunks
 from app.indexing.embedding_generator import get_embedding, initialize_embedding_model
@@ -151,6 +153,33 @@ async def index_repository(repo_url: str):
         f"\n--- Indexing process finished in {end_time - start_time:.2f} seconds. ---"
     )
     logger.info(f"Total rows in table '{table_name}': {len(code_table)}")
+
+    webhook_payload = {
+        "event": "indexed",
+        "message": "successfully indexed repository",
+        "repo_name": repo_name,
+        "repo_url": repo_url,
+        "table_name": table_name,
+        "total_rows": len(code_table),
+    }
+
+    # Send webhook notification if URL is configured
+    if settings.WEBHOOK_URL:
+        try:
+            logger.info(f"Sending webhook notification to {settings.WEBHOOK_URL}")
+            response = requests.post(
+                settings.WEBHOOK_URL,
+                json=webhook_payload,
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()  # Raise exception for 4XX/5XX responses
+            logger.info(
+                f"Webhook notification sent successfully: {response.status_code}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send webhook notification: {e}")
+    else:
+        logger.debug("No webhook URL configured, skipping notification")
 
 
 # Example usage: Run this script directly to index a repository

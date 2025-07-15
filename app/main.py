@@ -1,3 +1,4 @@
+import json
 import os
 
 # Set tokenizers parallelism to avoid deadlocks with forked processes
@@ -8,9 +9,7 @@ import logging
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
 from app.core.logging_config import setup_logging
-from app.github.webhook_utils import extract_push_event_info, parse_webhook_payload
 from app.services.github_service import (
-    check_github_app_installation,
     handle_pull_request_event,
     process_installation_event,
     process_push_event,
@@ -31,62 +30,44 @@ async def health_check():
     return {"status": "healthy", "message": "Code Reviewer API is running."}
 
 
-@app.get("/api/github/is-installed")
-async def is_github_app_installed(request: Request):
-    """Checks if the GitHub App is installed for the authenticated user."""
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Authorization header missing or invalid",
-        )
-    token = auth_header.split(" ")[1]
-
-    is_installed = await check_github_app_installation(token)
-    return {"installed": is_installed}
-
-
-@app.post("/api/webhook")
+@app.post("/api/reviewer")
 async def github_webhook(request: Request, background_tasks: BackgroundTasks):
     """Receives and processes webhook events from GitHub."""
-    payload = await parse_webhook_payload(request)
-    event = request.headers.get("X-GitHub-Event")
+    payload_body = await request.body()
+    payload = json.loads(payload_body)
+    event = payload.get("event")
+
+    logger.info(f"Received webhook event: {event}")
 
     match event:
         case "installation":
-            installation_id = payload.get("installation", {}).get("id")
+            installation_id = payload.get("installation_id")
             if not installation_id:
                 raise HTTPException(status_code=400, detail="Installation ID missing")
             repositories = payload.get("repositories", [])
             for repo in repositories:
-                background_tasks.add_task(process_installation_event, repo["full_name"])
+                background_tasks.add_task(process_installation_event, repo)
             return {
                 "status": "accepted",
                 "message": "Installation event accepted for processing.",
             }
         case "push":
-            push_info = extract_push_event_info(payload)
-            if not push_info:
-                raise HTTPException(
-                    status_code=400, detail="Invalid push event payload"
-                )
-            background_tasks.add_task(process_push_event, push_info)
+            # push_info = extract_push_event_info(payload)
+            # if not push_info:
+            #     raise HTTPException(
+            #         status_code=400, detail="Invalid push event payload"
+            #     )
+            background_tasks.add_task(process_push_event, payload)
             return {
                 "status": "accepted",
                 "message": "Push event accepted for indexing.",
             }
 
-        case "pull_request":
-            action = payload.get("action")
-            if action in ["opened", "reopened", "synchronize"]:
-                background_tasks.add_task(handle_pull_request_event, payload)
-                return {
-                    "status": "accepted",
-                    "message": f"PR event '{action}' accepted for review.",
-                }
+        case "review":
+            background_tasks.add_task(handle_pull_request_event, payload)
             return {
-                "status": "ignored",
-                "message": f"PR action '{action}' not processed.",
+                "status": "accepted",
+                "message": "PR event accepted for review.",
             }
 
         case _:
@@ -97,6 +78,6 @@ if __name__ == "__main__":
     import uvicorn
 
     print("Starting Code Reviewer API server...")
-    print("Webhook endpoint available at: /api/webhook")
+    print("Webhook endpoint available at: /api/reviewer")
     print("Health check endpoint available at: /health")
     uvicorn.run(app, host="0.0.0.0", port=8000)

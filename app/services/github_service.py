@@ -2,11 +2,9 @@ import asyncio
 import logging
 from typing import Any, Dict
 
-import httpx
+import requests
 
 from app.core.config import settings
-from app.github.auth import get_installation_access_token
-from app.github.client import fetch_pr_diff, post_review
 from app.indexing.incremental_indexer import incremental_index_repository
 from app.indexing.indexer import index_repository
 from app.services.llm_service import generate_review_for_file
@@ -19,43 +17,6 @@ async def process_installation_event(full_name: str):
     """Process an installation event by triggering the incremental indexing pipeline."""
     logger.info(f"Processing installation event for repo: {full_name}")
     await index_repository(f"https://github.com/{full_name}.git")
-
-
-async def check_github_app_installation(token: str) -> bool:
-    """Checks if the GitHub App is installed for the user authenticated with the given token."""
-    if not settings.GITHUB_APP_NAME:
-        logger.error("GITHUB_APP_NAME environment variable is not set.")
-        return False
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    url = "https://api.github.com/user/installations"
-
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.get(url, headers=headers)
-            res.raise_for_status()
-            data = res.json()
-            installations = data.get("installations", [])
-            for inst in installations:
-                if inst.get("app_slug") == settings.GITHUB_APP_NAME:
-                    logger.info(
-                        f"App '{settings.GITHUB_APP_NAME}' is installed for the user."
-                    )
-                    return True
-            logger.info(
-                f"App '{settings.GITHUB_APP_NAME}' is not installed for the user."
-            )
-            return False
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error while checking installations: {e.response.text}")
-            return False
-        except Exception as e:
-            logger.error(f"An error occurred while checking installations: {e}")
-            return False
 
 
 async def process_push_event(push_info: Dict[str, str]):
@@ -73,30 +34,11 @@ async def handle_pull_request_event(payload: Dict[str, Any]):
     - For each file, retrieves RAG context and generates AI review
     - Posts all comments in a single review to GitHub
     """
-    installation_id = payload.get("installation", {}).get("id")
-    if not installation_id:
-        logger.error("Error: Installation ID missing.")
-        return
 
     try:
-        token = get_installation_access_token(installation_id)
-        pull_request = payload.get("pull_request", {})
-        repo_info = payload.get("repository", {})
-        owner = repo_info.get("owner", {}).get("login")
-        repo_name = repo_info.get("name")
-        repo_url = repo_info.get("clone_url")
-        pull_number = pull_request.get("number")
+        repo_url = payload.get("clone_url")
+        diff_content = payload.get("diff_content")
 
-        if not all([owner, repo_name, repo_url, pull_number]):
-            logger.error("Error: Missing PR details in payload.")
-            return
-
-        diff_content = fetch_pr_diff(token, owner, repo_name, pull_number)
-        if not diff_content:
-            logger.error(f"Failed to fetch diff for PR #{pull_number}.")
-            return
-
-        logger.info(f"Successfully fetched diff for PR #{pull_number}. Parsing diff...")
         file_diffs = parse_diff(diff_content)
         logger.info(f"Parsed diff into {len(file_diffs)} file(s).")
 
@@ -156,7 +98,7 @@ async def handle_pull_request_event(payload: Dict[str, Any]):
             logger.info(
                 "No actionable comments or summary generated. No review will be posted."
             )
-            return
+            return "", []
 
         if not final_pr_summary:
             final_pr_summary = "Review complete. Please see inline comments."
@@ -167,9 +109,28 @@ async def handle_pull_request_event(payload: Dict[str, Any]):
         logger.info(
             f"Submitting a review with a PR summary and {len(all_inline_comments)} inline comments."
         )
-        post_review(
-            token, owner, repo_name, pull_number, final_pr_summary, all_inline_comments
-        )
+        webhook_payload = {
+            "event": "review",
+            "message": "successfully indexed repository",
+            "pr_summary": final_pr_summary,
+            "inline_comments": all_inline_comments,
+        }
+
+        if settings.WEBHOOK_URL:
+            try:
+                logger.info(f"Sending webhook notification to {settings.WEBHOOK_URL}")
+                response = requests.post(
+                    settings.WEBHOOK_URL,
+                    json=webhook_payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                response.raise_for_status()  # Raise exception for 4XX/5XX responses
+                logger.info(
+                    f"Webhook notification sent successfully: {response.status_code}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send webhook notification: {e}")
+        # return final_pr_summary, all_inline_comments
 
     except Exception as e:
         logger.error(f"An error occurred in the webhook handler: {e}")

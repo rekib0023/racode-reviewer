@@ -10,12 +10,6 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
     CHAT_MODEL_NAME: str = "qwen2.5-coder:7b"  # Default chat model for LLM
 
-    # GitHub App credentials and webhook secret
-    GITHUB_APP_ID: str
-    GITHUB_PRIVATE_KEY: str  # Should be the content of the .pem file
-    GITHUB_WEBHOOK_SECRET: str = ""
-    GITHUB_APP_NAME: str
-
     # Optional: For sentence-transformers cache
     SENTENCE_TRANSFORMERS_HOME: Optional[str] = None
 
@@ -24,6 +18,9 @@ class Settings(BaseSettings):
 
     # Logging configuration
     LOG_LEVEL: str = "INFO"
+
+    # Webhook configuration
+    WEBHOOK_URL: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
