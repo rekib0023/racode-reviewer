@@ -235,6 +235,8 @@ GITHUB_PRIVATE_KEY_PATH=path/to/private-key.pem
 GITHUB_WEBHOOK_SECRET=your_webhook_secret
 
 # Database Configuration
+
+```
 LANCE_DB_PATH=./lancedb_data
 ```
 
