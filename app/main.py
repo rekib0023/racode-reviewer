@@ -1,83 +1,83 @@
-import json
+"""
+Main FastAPI application module.
+
+This module initializes the FastAPI application and includes route definitions.
+The application is structured using FastAPI best practices including:
+- API Routers for route organization
+- Dependency Injection for service dependencies
+- Pydantic models for request/response validation
+- Proper exception handling and logging
+"""
+
 import os
 
 # Set tokenizers parallelism to avoid deadlocks with forked processes
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-import logging
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-
-from app.core.logging_config import setup_logging
-from app.services.github_service import (
-    handle_pull_request_event,
-    process_installation_event,
-    process_push_event,
-)
+from app.api.dependencies import get_settings
+from app.api.routes import api_router
+from app.core.config import Settings
+from app.core.logging_config import get_logger, setup_logging
 
 # Initialize logging
 setup_logging()
-logger = logging.getLogger("app")
-
-# --- FastAPI App Initialization ---
-app = FastAPI(title="Code Reviewer API")
+logger = get_logger(__name__)
 
 
-# --- API Endpoints ---
-@app.get("/health")
-async def health_check():
-    """Simple health check endpoint."""
-    return {"status": "healthy", "message": "Code Reviewer API is running."}
+def create_application(settings: Settings = Depends(get_settings)) -> FastAPI:
+    """
+    Factory function to create and configure the FastAPI application.
+
+    Args:
+        settings: Application settings from dependency injection
+
+    Returns:
+        FastAPI: Configured FastAPI application instance
+    """
+    application = FastAPI(
+        title="Code Reviewer API",
+        description="API for code review automation with RAG and LLM capabilities",
+        version="1.0.0",
+    )
+
+    # Add CORS middleware
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Configure this appropriately for production
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Include API router with all routes
+    application.include_router(api_router)
+
+    @application.on_event("startup")
+    async def startup_event():
+        logger.info("Starting Code Reviewer API")
+
+    @application.on_event("shutdown")
+    async def shutdown_event():
+        logger.info("Shutting down Code Reviewer API")
+
+    return application
 
 
-@app.post("/api/reviewer")
-async def github_webhook(request: Request, background_tasks: BackgroundTasks):
-    """Receives and processes webhook events from GitHub."""
-    payload_body = await request.body()
-    payload = json.loads(payload_body)
-    event = payload.get("event")
-
-    logger.info(f"Received webhook event: {event}")
-
-    match event:
-        case "installation":
-            installation_id = payload.get("installation_id")
-            if not installation_id:
-                raise HTTPException(status_code=400, detail="Installation ID missing")
-            repositories = payload.get("repositories", [])
-            for repo in repositories:
-                background_tasks.add_task(process_installation_event, repo)
-            return {
-                "status": "accepted",
-                "message": "Installation event accepted for processing.",
-            }
-        case "push":
-            # push_info = extract_push_event_info(payload)
-            # if not push_info:
-            #     raise HTTPException(
-            #         status_code=400, detail="Invalid push event payload"
-            #     )
-            background_tasks.add_task(process_push_event, payload)
-            return {
-                "status": "accepted",
-                "message": "Push event accepted for indexing.",
-            }
-
-        case "review":
-            background_tasks.add_task(handle_pull_request_event, payload)
-            return {
-                "status": "accepted",
-                "message": "PR event accepted for review.",
-            }
-
-        case _:
-            return {"status": "ignored", "message": f"Event '{event}' not processed."}
+# Create the FastAPI application instance
+app = create_application()
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    print("Starting Code Reviewer API server...")
-    print("Webhook endpoint available at: /api/reviewer")
-    print("Health check endpoint available at: /health")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    logger.info("Starting Code Reviewer API server in development mode")
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,  # Enable auto-reload for development
+        log_level="info",
+    )

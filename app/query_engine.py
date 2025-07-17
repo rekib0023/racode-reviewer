@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 # Import the necessary functions from our other modules
-from app.embedding_generator import get_embedding, initialize_embedding_model
+from app.embedding_generator import get_embedding, get_embedding_model
 from app.vector_store import get_lancedb_conn
 
 # Load environment variables from .env file
@@ -41,7 +41,7 @@ class CodeQueryEngine:
         self.table_name = table_name
 
         # Initialize the embedding model
-        self.embedding_model = initialize_embedding_model(self.embedding_model_name)
+        self.embedding_model = get_embedding_model(self.embedding_model_name)
 
         # Connect to LanceDB
         self.db_conn = get_lancedb_conn(self.lancedb_path)

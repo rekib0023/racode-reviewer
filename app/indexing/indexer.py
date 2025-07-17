@@ -7,7 +7,7 @@ import requests
 
 from app.core.config import settings
 from app.indexing.code_parser import parse_and_extract_chunks
-from app.indexing.embedding_generator import get_embedding, initialize_embedding_model
+from app.indexing.embedding_generator import get_embedding, get_embedding_model
 from app.storage.repo_manager import clone_or_pull_repository
 from app.storage.vector_store import (
     CodeChunkSchema,
@@ -81,7 +81,7 @@ async def index_repository(repo_url: str):
     # 2. Initialize Services (Embedding Model and DB)
     logger.info("\nStep 1: Initializing services...")
     try:
-        embedding_model = initialize_embedding_model(embedding_model_name)
+        embedding_model = get_embedding_model(embedding_model_name)
         db_conn = get_lancedb_conn(lancedb_path)
         # Drop the table to ensure a clean run, making the process idempotent
         drop_table(db_conn, table_name)

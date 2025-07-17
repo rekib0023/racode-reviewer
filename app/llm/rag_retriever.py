@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List
 
 from app.core.config import settings
-from app.indexing.embedding_generator import get_embedding, initialize_embedding_model
+from app.indexing.embedding_generator import get_embedding, get_embedding_model
 from app.storage.vector_store import get_lancedb_conn
 from app.utils.general_utils import repo_url_to_table_name
 
@@ -38,7 +38,7 @@ def retrieve_relevant_code_chunks(
             return ""
 
         table = db_conn.open_table(table_name)
-        embedding_model = initialize_embedding_model()
+        embedding_model = get_embedding_model()
 
         # Use the diff content as the query
         query_embedding = get_embedding(diff_content, embedding_model)
